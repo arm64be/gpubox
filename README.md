@@ -19,7 +19,7 @@ docker pull dockerstatic.tsuku.re/gpubox:latest
 
 | Variable | Default | What it does |
 |---|---|---|
-| `SSH_PUBKEY` | | Public key(s) for root, one per line. `PUBLIC_KEY` and `SSH_PUBLIC_KEY` also work. sshd starts only if a key is set. |
+| `SSH_PUBKEY` | | Public key(s) for root, one per line or separated by `;`. `PUBLIC_KEY` and `SSH_PUBLIC_KEY` also work. sshd starts only if a key is set. |
 | `NODE_NAME` | generated | Name shown in the prompt and on the status page. |
 | `GPUBOX_NO_GEO` | `0` | Set to `1` to skip the country lookup when naming the node. |
 | `SSH_PORT` | `22` | sshd port. |
@@ -34,6 +34,15 @@ Every variable the container starts with is also visible in ssh sessions, so API
 ### Node names
 
 The generated name is the GPU count and model, plus the country of the node's public IP: `4x4070-de`, `2xGB300-fr`, `8xH100+1x4090-us`. A node without GPUs is `cpu-xx`. The country comes from `ipinfo.io`, falling back to `ifconfig.co`. Set `NODE_NAME` to choose your own.
+
+### On vast.ai
+
+The `gpubox` template (id 792546) is set up for this image:
+
+- **Launch mode `args`** ("docker ENTRYPOINT"), so the image's own init runs. In vast's ssh and jupyter modes, their setup script replaces the entrypoint, and sshd and the status page never start.
+- **Ports** `-p 22:22 -p 8080:8080`. Vast maps them to random external ports, shown in the instance's IP & port info.
+- **Keys:** `SSH_PUBKEY` holds the authorized keys. Vast's own `SSH_PUBLIC_KEY` is added too when it is set.
+- **Offers** are filtered to `cuda_max_good >= 13.0`, with 64 GB of disk recommended.
 
 ## Python
 
@@ -60,7 +69,7 @@ podman build -f Containerfile -t gpubox .
 
 `publish.sh` exports the image with gzip layers, uploads only the layers dev-vm doesn't have yet, then the manifest, then repoints the tags. Rebuilding after a small change therefore re-uploads only the changed layers. The registry is plain files in `/srv/dockerstatic` on dev-vm, served read-only by nginx. Its config lives in the tsukure infra repo.
 
-Old layers stay on dev-vm until removed by hand.
+Old layers stay on dev-vm unless you publish with `PRUNE=1`, which deletes manifests no tag points to and layers no remaining manifest uses.
 
 `nodestat/` builds on its own with `make`. `mock_nvml.so` simulates multi-GPU nodes for working on the page without the hardware (see the top of `nodestat/mock_nvml.c`).
 

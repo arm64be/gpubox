@@ -43,7 +43,11 @@ touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
 for var in SSH_PUBKEY SSH_PUBLIC_KEY PUBLIC_KEY; do
     keys=${!var:-}
     [ -n "$keys" ] || continue
+    keys=${keys//;/$'\n'}   # several keys: one per line, or separated by ';'
     while IFS= read -r key; do
+        # tolerate quotes left in by however the platform parsed `-e K="..."`
+        key=${key#"${key%%[![:space:]\"\']*}"}
+        key=${key%"${key##*[![:space:]\"\']}"}
         [ -n "$key" ] || continue
         grep -qxF -- "$key" /root/.ssh/authorized_keys || printf '%s\n' "$key" >> /root/.ssh/authorized_keys
     done <<< "$keys"

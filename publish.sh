@@ -5,6 +5,7 @@
 #
 #   ./publish.sh                         push localhost/gpubox:latest as :latest
 #   ./publish.sh localhost/gpubox:x a b  push that image as tags a and b
+#   PRUNE=1 ./publish.sh ...             also delete layers no tag uses anymore
 #
 # The registry is plain files served by nginx (see the tsukure infra repo,
 # nginx/dev-vm/dockerstatic.tsuku.re.conf). Layers are uploaded first and only
@@ -56,6 +57,19 @@ for t in "${tags[@]}"; do
     [[ $t =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "bad tag: $t" >&2; exit 1; }
     ssh "$remote" "ln -sfn '$mdigest' '$dest/manifests/.$t.new' && mv -Tf '$dest/manifests/.$t.new' '$dest/manifests/$t'"
 done
+
+if [ "${PRUNE:-0}" = 1 ]; then
+    echo "== pruning manifests no tag points to, and blobs no manifest uses"
+    ssh "$remote" "d='$dest'"'
+        for f in "$d"/manifests/sha256:*; do
+            n=${f##*/}
+            [ -n "$(find "$d/manifests" -maxdepth 1 -type l -lname "$n")" ] || { rm -f "$f"; echo "   removed manifest ${n:0:19}"; }
+        done
+        keep=$(cat "$d"/manifests/sha256:* | grep -o "sha256:[a-f0-9]\{64\}" | sort -u)
+        for f in "$d"/blobs/sha256:*; do
+            printf "%s\n" "$keep" | grep -qx "${f##*/}" || { rm -f "$f"; echo "   removed blob ${f##*/}" | cut -c1-40; }
+        done'
+fi
 
 host=${PUBLIC_HOST:-dockerstatic.tsuku.re}
 echo "== done"
