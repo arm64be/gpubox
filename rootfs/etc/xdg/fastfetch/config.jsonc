@@ -1,6 +1,6 @@
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
-  "logo": { "type": "builtin", "source": "fedora_small", "color": { "1": "magenta" } },
+  "logo": { "type": "builtin", "source": "almalinux" },
   "display": { "separator": "  ", "color": { "keys": "magenta" } },
   "modules": [
     { "type": "command", "key": "node", "text": "printf %s \"$NODE_NAME\"" },

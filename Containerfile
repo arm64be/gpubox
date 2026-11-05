@@ -1,21 +1,25 @@
-# gpubox: a Fedora GPU dev image for rented nodes.
+# gpubox: a GPU dev image for rented nodes, on AlmaLinux 10.
 #
 # CUDA 13.0 toolkit with Nsight Compute and Nsight Systems, uv with a ready
 # PyTorch + CuTeDSL venv, zsh + starship, sshd, and the nodestat status page.
+#
+# Why not Fedora: nvcc 13.0 cannot compile against current Fedora. glibc 2.42+
+# declares rsqrt() in a way that clashes with CUDA's math headers, and gcc 16 is
+# too new. AlmaLinux 10 (glibc 2.39, gcc 14) is a supported CUDA 13.0 host.
 
-ARG FEDORA=44
+ARG BASE=docker.io/library/almalinux:10-minimal
 
 # ---------------------------------------------------------------- nodestat
-FROM registry.fedoraproject.org/fedora-minimal:${FEDORA} AS nodestat
-RUN dnf -y install --setopt=install_weak_deps=False --setopt=retries=10 gcc make && dnf clean all
+# nodestat uses C23 #embed, which needs gcc 15 (gcc-toolset-15 here).
+FROM ${BASE} AS nodestat
+RUN microdnf -y install --setopt=install_weak_deps=0 gcc-toolset-15-gcc make && microdnf clean all
 COPY nodestat/ /src/
-RUN make -C /src nodestat CFLAGS="-O2 -Wall"
+RUN make -C /src nodestat CC=/opt/rh/gcc-toolset-15/root/usr/bin/gcc CFLAGS="-O2 -Wall"
 
 # ------------------------------------------------------------------- image
-FROM registry.fedoraproject.org/fedora-minimal:${FEDORA}
+FROM ${BASE}
 
 # CUDA 13.0 matches the r580 drivers on most hosts ("Max CUDA 13.0").
-# NVIDIA's RHEL 10 repo is the one that still carries 13.0 alongside Nsight.
 ARG CUDA=13-0
 ARG CUDA_DIR=/usr/local/cuda-13.0
 ARG TORCH_BACKEND=cu130
@@ -23,7 +27,7 @@ ARG PYTHON=3.13
 ARG STARSHIP=v1.27.0
 
 LABEL org.opencontainers.image.source="https://github.com/arm64be/gpubox" \
-      org.opencontainers.image.description="Fedora GPU dev box: CUDA 13.0 + Nsight, uv + PyTorch + CuTeDSL, zsh, sshd, status page"
+      org.opencontainers.image.description="AlmaLinux 10 GPU dev box: CUDA 13.0 + Nsight, uv + PyTorch + CuTeDSL, zsh, sshd, status page"
 
 ENV LANG=C.UTF-8 \
     EDITOR=nano \
@@ -38,12 +42,15 @@ ENV LANG=C.UTF-8 \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 
-# Base system. gcc/g++ are also what Triton and torch.compile need at runtime.
-RUN dnf -y install --setopt=install_weak_deps=False --setopt=retries=10 \
+# Base system, with EPEL for fastfetch, btop, nvtop, rclone and ffmpeg, and CRB
+# for ninja. gcc/g++ are also what Triton and torch.compile need at runtime.
+RUN microdnf -y install --setopt=install_weak_deps=0 dnf epel-release \
+    && microdnf clean all \
+    && dnf -y install --enablerepo=crb --setopt=install_weak_deps=False --setopt=retries=10 \
         zsh nano less which findutils diffutils file procps-ng util-linux shadow-utils hostname \
         git git-lfs tmux rsync curl jq zstd xz tar gzip unzip \
         htop btop nvtop fastfetch lsof strace gdb pciutils iproute iputils bind-utils numactl \
-        rclone ffmpeg-free opus-tools \
+        rclone ffmpeg-free \
         gcc gcc-c++ make cmake ninja-build \
         openssh-server openssh-clients catatonit \
     && dnf clean all
@@ -76,12 +83,15 @@ COPY rootfs/ /
 COPY --from=nodestat /src/nodestat /usr/local/bin/nodestat
 
 # Root logs in to zsh. Containers can't set a login uid, so pam_loginuid must
-# not be allowed to refuse ssh logins.
+# not be allowed to refuse ssh logins. CUDA's nsys wrapper only looks for the
+# Nsight Systems release it shipped with; point it at the one dnf installed.
 RUN sed -i 's|^root:\(.*\):/bin/bash$|root:\1:/bin/zsh|' /etc/passwd \
     && echo 'source /etc/zsh/gpubox-env.zsh' >> /etc/zshenv \
     && echo 'source /etc/zsh/gpubox.zsh' >> /etc/zshrc \
+    && touch /root/.zshrc \
     && sed -i 's/^session\s\+required\s\+pam_loginuid.so/session optional pam_loginuid.so/' /etc/pam.d/sshd \
     && rm -f /etc/ssh/ssh_host_* \
+    && ln -sfn /usr/local/bin/nsys /usr/local/cuda/bin/nsys \
     && chmod 755 /usr/local/bin/gpubox-init /usr/local/bin/gpubox-name
 
 WORKDIR /root

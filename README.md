@@ -1,6 +1,8 @@
 # gpubox
 
-A Fedora image for rented GPU nodes.
+A GPU dev image for rented nodes, on AlmaLinux 10 (dnf, from the Fedora/RHEL family).
+
+It is not Fedora because nvcc 13.0 can't compile against current Fedora: glibc 2.42+ declares `rsqrt()` in a way that clashes with CUDA's math headers, and gcc 16 is too new. AlmaLinux 10 (glibc 2.39, gcc 14) is a supported CUDA 13.0 host.
 
 ```
 docker pull dockerstatic.tsuku.re/gpubox:latest
@@ -11,7 +13,7 @@ docker pull dockerstatic.tsuku.re/gpubox:latest
 - **zsh** with starship's default prompt, showing the node name instead of the container id.
 - **sshd** for root, key-only.
 - **nodestat**, a status page on port 8080: host and GPU stats, live graphs, and a warning when the NVIDIA driver stops answering.
-- fastfetch on login, plus nano, tmux, btop, nvtop, git-lfs, rclone, rsync, zstd, ffmpeg and opus-tools.
+- fastfetch on login, plus nano, tmux, btop, nvtop, git-lfs, rclone, rsync, zstd and ffmpeg (with Opus).
 
 ## Running it
 
