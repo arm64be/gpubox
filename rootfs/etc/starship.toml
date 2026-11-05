@@ -1,0 +1,15 @@
+# starship's default prompt, except the host part shows NODE_NAME
+# (e.g. 4x4070-de) because a container's hostname is a random id.
+format = "$username${env_var.NODE_NAME}$all"
+
+[hostname]
+disabled = true
+
+[username]
+show_always = true
+format = "[$user]($style)@"
+style_root = "bold red"
+style_user = "bold yellow"
+
+[env_var.NODE_NAME]
+format = "[$env_value](bold #cba6f7) in "

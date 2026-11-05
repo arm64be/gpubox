@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS ?= -O2 -g -Wall -Wextra -Wno-unused-parameter
-CFLAGS += -std=c23 -pthread
+override CFLAGS += -std=c23 -pthread
 
 all: nodestat mock_nvml.so
 

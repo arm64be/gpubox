@@ -1,0 +1,20 @@
+#!/bin/bash
+# Prints a node name from its GPUs and country: 4x4070-de, 2xGB300-fr, cpu-us.
+#
+# The country comes from a geo-IP lookup of this node's public address
+# (ipinfo.io, falling back to ifconfig.co). Set GPUBOX_NO_GEO=1 to skip it.
+set -u
+
+tag=$(nodestat --gpu-tag 2>/dev/null) || tag=""
+[ -n "$tag" ] || tag=cpu
+
+cc=""
+if [ "${GPUBOX_NO_GEO:-0}" != 1 ]; then
+    for url in https://ipinfo.io/country https://ifconfig.co/country-iso; do
+        cc=$(curl -fsS --max-time 4 "$url" 2>/dev/null | tr -dc 'A-Za-z' | tr 'A-Z' 'a-z')
+        [ ${#cc} -eq 2 ] && break
+        cc=""
+    done
+fi
+
+printf '%s%s\n' "$tag" "${cc:+-$cc}"

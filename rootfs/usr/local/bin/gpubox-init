@@ -1,0 +1,77 @@
+#!/bin/bash
+# Container entrypoint (runs under catatonit as PID 1).
+#
+#  1. names the node, e.g. 4x4070-de
+#  2. saves the container's environment so ssh sessions see it too
+#  3. starts sshd with keys from SSH_PUBKEY / PUBLIC_KEY
+#  4. starts the nodestat status page
+#  5. runs the given command, or waits forever
+set -u
+log() { printf 'gpubox: %s\n' "$*" >&2; }
+
+mkdir -p /run/gpubox
+
+# ------------------------------------------------------------------ node name
+if [ -z "${NODE_NAME:-}" ]; then
+    NODE_NAME=$(gpubox-name)
+fi
+export NODE_NAME
+printf '%s\n' "$NODE_NAME" > /run/nodename
+# Works only with CAP_SYS_ADMIN; the prompt and status page use NODE_NAME anyway.
+hostname "$NODE_NAME" 2>/dev/null || true
+log "node name: $NODE_NAME"
+
+# --------------------------------------------------------------- environment
+# Docker passes env to PID 1 only. Save it so ssh logins (zsh reads this from
+# /etc/zshenv) see the same variables, e.g. API keys set in a vast template.
+{
+    while IFS= read -r -d '' kv; do
+        k=${kv%%=*}
+        case $k in
+            HOME|PWD|OLDPWD|SHLVL|_|TERM|HOSTNAME|SHELL|USER|LOGNAME|MAIL|SSH_*|PS1|PATH) continue ;;
+        esac
+        [[ $k =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        printf 'export %s=%q\n' "$k" "${kv#*=}"
+    done < /proc/self/environ
+    printf 'export NODE_NAME=%q\n' "$NODE_NAME"
+} > /run/gpubox/env
+chmod 600 /run/gpubox/env
+
+# ------------------------------------------------------------------------ ssh
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+for var in SSH_PUBKEY SSH_PUBLIC_KEY PUBLIC_KEY; do
+    keys=${!var:-}
+    [ -n "$keys" ] || continue
+    while IFS= read -r key; do
+        [ -n "$key" ] || continue
+        grep -qxF -- "$key" /root/.ssh/authorized_keys || printf '%s\n' "$key" >> /root/.ssh/authorized_keys
+    done <<< "$keys"
+done
+# Host keys are made per container, never baked into the image.
+ssh-keygen -A >/dev/null 2>&1
+if [ "${GPUBOX_SSH:-1}" = 1 ]; then
+    if [ -s /root/.ssh/authorized_keys ]; then
+        /usr/sbin/sshd -p "${SSH_PORT:-22}" -E /var/log/sshd.log && log "sshd on port ${SSH_PORT:-22}"
+    else
+        log "no ssh keys given (set SSH_PUBKEY); sshd not started"
+    fi
+fi
+
+# ------------------------------------------------------------------- nodestat
+if [ "${GPUBOX_NODESTAT:-1}" = 1 ]; then
+    (
+        # restart it if it ever dies; it should not
+        while :; do
+            nodestat -p "${NODESTAT_PORT:-8080}" >> /var/log/nodestat.log 2>&1
+            sleep 2
+        done
+    ) &
+    log "status page on port ${NODESTAT_PORT:-8080}"
+fi
+
+# ------------------------------------------------------------------------ run
+if [ $# -gt 0 ]; then
+    exec "$@"
+fi
+exec sleep infinity

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": { "type": "builtin", "source": "fedora_small", "color": { "1": "magenta" } },
+  "display": { "separator": "  ", "color": { "keys": "magenta" } },
+  "modules": [
+    { "type": "command", "key": "node", "text": "printf %s \"$NODE_NAME\"" },
+    "separator",
+    "os", "kernel", "uptime", "shell",
+    "cpu", "gpu", "memory", "disk",
+    { "type": "command", "key": "cuda", "text": "nvcc --version | sed -n 's/.*release \\([0-9.]*\\).*/\\1/p'" },
+    { "type": "command", "key": "torch", "text": "/opt/venv/bin/python -c 'import importlib.metadata as m; print(m.version(\"torch\"))'" },
+    { "type": "command", "key": "status page", "text": "printf ':%s' \"${NODESTAT_PORT:-8080}\"" }
+  ]
+}
