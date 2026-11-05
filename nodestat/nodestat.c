@@ -45,6 +45,14 @@ static const char INDEX_HTML[] = {
 #embed "index.html"
     , 0};
 
+// Obel Mono, SIL Open Font License 1.1 (fonts/OFL.txt), served alongside the page.
+static const unsigned char FONT_WOFF2[] = {
+#embed "fonts/ObelMono-VF.woff2"
+};
+static const char FONT_LICENSE[] = {
+#embed "fonts/OFL.txt"
+    , 0};
+
 // ---------------------------------------------------------------- utilities
 
 static double now_mono(void) {
@@ -1090,9 +1098,10 @@ static void cl_close(int i) {
 static void respond(struct client *c, int code, const char *status, const char *ctype, const char *extra,
                     const char *body, size_t len) {
     sb_printf(&c->out,
-              "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\n"
+              "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\n%s"
               "X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n%s\r\n",
-              code, status, ctype, len, extra ? extra : "");
+              code, status, ctype, len, extra && strstr(extra, "Cache-Control:") ? "" : "Cache-Control: no-store\r\n",
+              extra ? extra : "");
     sb_put(&c->out, body, len);
     c->close_after = true;
 }
@@ -1136,7 +1145,7 @@ static void serve_history(struct client *c) {
 
 static void serve_index(struct client *c) {
     static const char csp[] = "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                              "script-src 'self' 'unsafe-inline'; img-src 'self' data:\r\n";
+                              "script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'\r\n";
     if (g_www) {
         char path[4096], *buf = malloc(1 << 20);
         snprintf(path, sizeof path, "%s/index.html", g_www);
@@ -1197,6 +1206,11 @@ static void handle_request(struct client *c) {
         }
     }
     if (ROUTE("/")) serve_index(c);
+    else if (ROUTE("/font.woff2"))
+        respond(c, 200, "OK", "font/woff2", "Cache-Control: public, max-age=31536000, immutable\r\n",
+                (const char *)FONT_WOFF2, sizeof FONT_WOFF2);
+    else if (ROUTE("/font-license.txt"))
+        respond(c, 200, "OK", "text/plain; charset=utf-8", nullptr, FONT_LICENSE, sizeof FONT_LICENSE - 1);
     else if (ROUTE("/api/snapshot")) respond(c, 200, "OK", "application/json", nullptr, g_latest.p, g_latest.n);
     else if (ROUTE("/api/history")) serve_history(c);
     else if (ROUTE("/api/events")) {
